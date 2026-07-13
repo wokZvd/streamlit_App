@@ -4,7 +4,6 @@ yfinance
 pandas
 
 pandas
-openpyxl
 folium
 streamlit-folium
-chardet
+openpyxl
