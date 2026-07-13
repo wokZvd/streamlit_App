@@ -2,3 +2,8 @@ streamlit
 plotly
 yfinance
 pandas
+
+pandas
+openpyxl
+folium
+streamlit-folium
