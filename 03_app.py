@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import folium
+import chardet
 from streamlit_folium import st_folium
 
 st.set_page_config(
@@ -9,111 +10,170 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🅿️ 서울시 공영주차장 지도")
+st.title("🅿️ 서울시 공영주차장 정보")
 
 st.write("CSV 또는 Excel 파일을 업로드하세요.")
 
 uploaded_file = st.file_uploader(
-    "파일 업로드",
+    "파일 선택",
     type=["csv", "xlsx"]
 )
 
-if uploaded_file is not None:
+# -----------------------------
+# 파일 읽기 함수
+# -----------------------------
+def load_data(uploaded_file):
 
     if uploaded_file.name.endswith(".csv"):
-        df = pd.read_csv(uploaded_file)
+
+        raw = uploaded_file.read()
+
+        result = chardet.detect(raw)
+
+        encoding = result["encoding"]
+
+        uploaded_file.seek(0)
+
+        try:
+            df = pd.read_csv(uploaded_file, encoding=encoding)
+
+        except:
+            uploaded_file.seek(0)
+
+            try:
+                df = pd.read_csv(uploaded_file, encoding="cp949")
+
+            except:
+                uploaded_file.seek(0)
+
+                try:
+                    df = pd.read_csv(uploaded_file, encoding="euc-kr")
+
+                except:
+                    uploaded_file.seek(0)
+                    df = pd.read_csv(uploaded_file, encoding="utf-8")
 
     else:
         df = pd.read_excel(uploaded_file)
 
-    st.success("파일 업로드 완료!")
+    return df
 
-    st.subheader("데이터 미리보기")
-    st.dataframe(df)
 
-    st.markdown("---")
+# -----------------------------
+# 메인
+# -----------------------------
+if uploaded_file is not None:
 
-    # 컬럼 선택
-    lat_col = st.selectbox("위도 컬럼", df.columns)
-    lon_col = st.selectbox("경도 컬럼", df.columns)
+    try:
 
-    name_col = st.selectbox("주차장명", df.columns)
+        df = load_data(uploaded_file)
 
-    fee_col = st.selectbox("요금 컬럼", df.columns)
+        st.success("파일 업로드 성공!")
 
-    address_col = st.selectbox("주소 컬럼", df.columns)
+        st.subheader("데이터 미리보기")
 
-    if "운영시간" in df.columns:
-        time_col = "운영시간"
-    else:
-        time_col = None
+        st.dataframe(df)
 
-    if "주차가능대수" in df.columns:
-        capacity_col = "주차가능대수"
-    else:
-        capacity_col = None
+        st.markdown("---")
 
-    # 요금 필터
-    st.sidebar.header("검색")
+        cols = list(df.columns)
 
-    keyword = st.sidebar.text_input("주차장명 검색")
+        st.sidebar.header("컬럼 선택")
 
-    if keyword:
-        df = df[df[name_col].astype(str).str.contains(keyword)]
+        lat_col = st.sidebar.selectbox("위도", cols)
 
-    # 지도 중심
-    center = [
-        df[lat_col].mean(),
-        df[lon_col].mean()
-    ]
+        lon_col = st.sidebar.selectbox("경도", cols)
 
-    m = folium.Map(
-        location=center,
-        zoom_start=12,
-        tiles="CartoDB positron"
-    )
+        name_col = st.sidebar.selectbox("주차장명", cols)
 
-    for _, row in df.iterrows():
+        address_col = st.sidebar.selectbox("주소", cols)
 
-        popup = f"""
-        <b>{row[name_col]}</b><br>
-        📍 {row[address_col]}<br>
-        💰 {row[fee_col]}
-        """
+        fee_col = st.sidebar.selectbox("요금", cols)
 
-        if time_col:
-            popup += f"<br>🕒 {row[time_col]}"
+        time_col = st.sidebar.selectbox(
+            "운영시간(없으면 아무 컬럼)",
+            cols
+        )
 
-        if capacity_col:
-            popup += f"<br>🚗 {row[capacity_col]}"
+        capacity_col = st.sidebar.selectbox(
+            "주차가능대수(없으면 아무 컬럼)",
+            cols
+        )
 
-        folium.Marker(
-            location=[row[lat_col], row[lon_col]],
-            popup=folium.Popup(popup, max_width=300),
-            tooltip=row[name_col],
-            icon=folium.Icon(color="blue", icon="info-sign")
-        ).add_to(m)
+        keyword = st.sidebar.text_input("주차장 검색")
 
-    st.subheader("지도")
+        if keyword:
+            df = df[
+                df[name_col]
+                .astype(str)
+                .str.contains(keyword, case=False)
+            ]
 
-    st_folium(
-        m,
-        width=1200,
-        height=700
-    )
+        if len(df) == 0:
+            st.warning("검색 결과가 없습니다.")
+            st.stop()
 
-    st.subheader("주차장 목록")
+        center = [
+            df[lat_col].astype(float).mean(),
+            df[lon_col].astype(float).mean()
+        ]
 
-    show_cols = [
-        name_col,
-        address_col,
-        fee_col
-    ]
+        m = folium.Map(
+            location=center,
+            zoom_start=12,
+            tiles="CartoDB positron"
+        )
 
-    if time_col:
-        show_cols.append(time_col)
+        for _, row in df.iterrows():
 
-    if capacity_col:
-        show_cols.append(capacity_col)
+            popup = f"""
+            <b>{row[name_col]}</b><br>
+            📍 {row[address_col]}<br>
+            💰 {row[fee_col]}<br>
+            🕒 {row[time_col]}<br>
+            🚗 {row[capacity_col]}
+            """
 
-    st.dataframe(df[show_cols])
+            folium.Marker(
+                location=[
+                    float(row[lat_col]),
+                    float(row[lon_col])
+                ],
+                tooltip=str(row[name_col]),
+                popup=folium.Popup(
+                    popup,
+                    max_width=300
+                ),
+                icon=folium.Icon(
+                    color="blue",
+                    icon="info-sign"
+                )
+            ).add_to(m)
+
+        st.subheader("🗺️ 공영주차장 지도")
+
+        st_folium(
+            m,
+            width=1200,
+            height=700
+        )
+
+        st.subheader("📋 주차장 목록")
+
+        st.dataframe(
+            df[
+                [
+                    name_col,
+                    address_col,
+                    fee_col,
+                    time_col,
+                    capacity_col
+                ]
+            ]
+        )
+
+    except Exception as e:
+
+        st.error("파일을 읽는 중 오류가 발생했습니다.")
+
+        st.exception(e)
