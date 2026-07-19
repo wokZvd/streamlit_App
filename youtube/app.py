@@ -131,6 +131,21 @@ def hourly_data(df):
 def daily_data(df):
     return df.groupby(df["date"].dt.date).size().reset_index(name="댓글수")
 
+import os
+
+def get_font_path():
+    paths=[
+        "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+        "/usr/share/fonts/opentype/nanum/NanumGothic.ttf",
+        "/usr/share/fonts/truetype/nanum/NanumBarunGothic.ttf"
+    ]
+
+    for path in paths:
+        if os.path.exists(path):
+            return path
+
+    return None
+
 def make_wordcloud(df):
     text=" ".join(
         clean_text(x)
@@ -140,19 +155,10 @@ def make_wordcloud(df):
     if not text:
         return None
 
-def make_wordcloud(df):
-    text=" ".join(
-        clean_text(x)
-        for x in df["text"]
-    )
-
-    if not text:
-        return None
-
-    font_path="/usr/share/fonts/truetype/nanum/NanumGothic.ttf"
+    font=get_font_path()
 
     return WordCloud(
-        font_path=font_path,
+        font_path=font,
         width=900,
         height=500,
         background_color="white",
