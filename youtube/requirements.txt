@@ -11,3 +11,5 @@ nltk
 youtube-transcript-api
 isodate
 streamlit
+wordcloud
+fonttools
