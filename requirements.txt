@@ -7,13 +7,3 @@ pandas
 folium
 streamlit-folium
 openpyxl
-
-google-api-python-client
-pandas
-plotly
-wordcloud
-matplotlib
-konlpy
-nltk
-youtube-transcript-api
-isodate
