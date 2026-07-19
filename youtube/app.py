@@ -1,3 +1,189 @@
+import streamlit as st
+import pandas as pd
+import re
+import nltk
+import matplotlib.pyplot as plt
+from collections import Counter
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+from wordcloud import WordCloud
+import plotly.express as px
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+
+st.set_page_config(page_title="YouTube 댓글 분석기", page_icon="🎬", layout="wide")
+
+try:
+    nltk.data.find("sentiment/vader_lexicon")
+except:
+    nltk.download("vader_lexicon")
+
+def extract_video_id(url):
+    patterns=[
+        r"youtube\.com/watch\?v=([^&]+)",
+        r"youtu\.be/([^?&]+)",
+        r"youtube\.com/shorts/([^?&]+)",
+        r"youtube\.com/embed/([^?&]+)"
+    ]
+    for p in patterns:
+        m=re.search(p,url)
+        if m:
+            return m.group(1)
+    return None
+
+def get_youtube(api_key):
+    return build(
+        "youtube",
+        "v3",
+        developerKey=api_key
+    )
+
+def get_video_info(youtube,video_id):
+    try:
+        result=youtube.videos().list(
+            part="snippet,statistics",
+            id=video_id
+        ).execute()
+
+        if not result["items"]:
+            return None
+
+        item=result["items"][0]
+
+        return {
+            "title":item["snippet"]["title"],
+            "channel":item["snippet"]["channelTitle"],
+            "date":item["snippet"]["publishedAt"],
+            "views":item["statistics"].get("viewCount",0),
+            "likes":item["statistics"].get("likeCount",0),
+            "comments":item["statistics"].get("commentCount",0)
+        }
+
+    except HttpError:
+        return None
+
+def get_comments(youtube,video_id,limit):
+    comments=[]
+    token=None
+
+    while len(comments)<limit:
+        try:
+            data=youtube.commentThreads().list(
+                part="snippet",
+                videoId=video_id,
+                maxResults=min(100,limit-len(comments)),
+                pageToken=token,
+                textFormat="plainText"
+            ).execute()
+
+        except:
+            break
+
+        for item in data["items"]:
+            c=item["snippet"]["topLevelComment"]["snippet"]
+
+            comments.append({
+                "author":c.get("authorDisplayName",""),
+                "text":c.get("textDisplay",""),
+                "likes":c.get("likeCount",0),
+                "date":c.get("publishedAt","")
+            })
+
+            if len(comments)>=limit:
+                break
+
+        token=data.get("nextPageToken")
+
+        if not token:
+            break
+
+    return pd.DataFrame(comments)
+
+def clean_text(text):
+    text=str(text)
+    text=re.sub(r"http\S+","",text)
+    text=re.sub(r"[^가-힣a-zA-Z0-9\s]","",text)
+    return text
+
+def sentiment(text):
+    score=SentimentIntensityAnalyzer().polarity_scores(text)["compound"]
+
+    if score>=0.05:
+        return "긍정"
+    elif score<=-0.05:
+        return "부정"
+    else:
+        return "중립"
+
+def analyze_comments(df):
+    df["date"]=pd.to_datetime(df["date"],errors="coerce")
+    df["hour"]=df["date"].dt.hour
+    df["sentiment"]=df["text"].apply(sentiment)
+    return df
+
+def sentiment_data(df):
+    result=df["sentiment"].value_counts().reset_index()
+    result.columns=["감정","개수"]
+    return result
+
+def hourly_data(df):
+    return df.groupby("hour").size().reset_index(name="댓글수")
+
+def daily_data(df):
+    return df.groupby(df["date"].dt.date).size().reset_index(name="댓글수")
+
+def make_wordcloud(df):
+    text=" ".join(
+        clean_text(x)
+        for x in df["text"]
+    )
+
+    if not text:
+        return None
+
+def make_wordcloud(df):
+    text=" ".join(
+        clean_text(x)
+        for x in df["text"]
+    )
+
+    if not text:
+        return None
+
+    font_path="/usr/share/fonts/truetype/nanum/NanumGothic.ttf"
+
+    return WordCloud(
+        font_path=font_path,
+        width=900,
+        height=500,
+        background_color="white",
+        max_words=100
+    ).generate(text)
+
+def top_words(df,n=20):
+    words=[]
+
+    for text in df["text"]:
+        words.extend(clean_text(text).split())
+
+    stop=[
+        "영상",
+        "댓글",
+        "정말",
+        "너무",
+        "진짜",
+        "감사합니다",
+        "좋아요"
+    ]
+
+    words=[
+        w for w in words
+        if len(w)>1 and w not in stop
+    ]
+
+    return pd.DataFrame(
+        Counter(words).most_common(n),
+        columns=["단어","빈도"]
+    )
 def show_charts(df):
     st.subheader("시간대별 댓글 작성 추이")
     hourly=hourly_data(df)
