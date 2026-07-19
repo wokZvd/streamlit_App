@@ -140,10 +140,23 @@ def make_wordcloud(df):
     if not text:
         return None
 
+def make_wordcloud(df):
+    text=" ".join(
+        clean_text(x)
+        for x in df["text"]
+    )
+
+    if not text:
+        return None
+
+    font_path="/usr/share/fonts/truetype/nanum/NanumGothic.ttf"
+
     return WordCloud(
+        font_path=font_path,
         width=900,
         height=500,
-        background_color="white"
+        background_color="white",
+        max_words=100
     ).generate(text)
 
 def top_words(df,n=20):
